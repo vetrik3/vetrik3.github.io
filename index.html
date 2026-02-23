@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pravidlá spoločného bývania</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --card: #111824;
+      --muted: #9fb0c2;
+      --text: #e8eef6;
+      --accent: #7cd4ff;
+      --good: #6ee7b7;
+      --warn: #fbbf24;
+      --bad: #fb7185;
+      --border: rgba(255,255,255,.10);
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 18px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--text);
+      background:
+        radial-gradient(1200px 600px at 10% 0%, rgba(124,212,255,.18), transparent 55%),
+        radial-gradient(800px 500px at 95% 20%, rgba(110,231,183,.10), transparent 60%),
+        radial-gradient(800px 600px at 40% 110%, rgba(251,191,36,.10), transparent 60%),
+        var(--bg);
+    }
+    a { color: var(--accent); }
+    header {
+      padding: 46px 20px 22px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .title {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 3vw, 44px);
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      margin: 10px 0 0;
+      color: var(--muted);
+      max-width: 70ch;
+      line-height: 1.55;
+    }
+    .actions {
+      display:flex;
+      gap:10px;
+      flex-wrap: wrap;
+    }
+    button {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.06);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 12px;
+      cursor: pointer;
+      box-shadow: none;
+      transition: transform .06s ease, background .2s ease;
+      font-weight: 600;
+    }
+    button:hover { background: rgba(255,255,255,.10); }
+    button:active { transform: translateY(1px); }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 20px 52px;
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 18px;
+    }
+    @media (max-width: 980px) {
+      .wrap { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: rgba(17,24,36,.85);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .card h2 {
+      margin: 0;
+      padding: 16px 18px;
+      font-size: 18px;
+      border-bottom: 1px solid var(--border);
+      display:flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .card .content {
+      padding: 16px 18px 18px;
+    }
+    .pill {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.04);
+      white-space: nowrap;
+    }
+    .grid2 {
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 720px) {
+      .grid2 { grid-template-columns: 1fr; }
+    }
+    .rule {
+      border: 1px dashed rgba(255,255,255,.14);
+      border-radius: 14px;
+      padding: 12px 12px 10px;
+      background: rgba(255,255,255,.03);
+    }
+    .rule h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      display:flex;
+      align-items:center;
+      gap: 8px;
+    }
+    .dot {
+      width:10px; height:10px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px rgba(124,212,255,.15);
+      flex: 0 0 auto;
+    }
+    .rule ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 12px;
+    }
+    th, td {
+      border-bottom: 1px solid rgba(255,255,255,.10);
+      padding: 10px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    tr:last-child td { border-bottom: none; }
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .kbd {
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 2px 7px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.05);
+      color: var(--text);
+      white-space: nowrap;
+    }
+    input[type="text"], input[type="date"], textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 12px;
+      outline: none;
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    label {
+      display:block;
+      color: var(--muted);
+      font-size: 12px;
+      margin: 10px 0 6px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-weight: 700;
+    }
+    .checklist {
+      display:grid;
+      gap: 10px;
+    }
+    .item {
+      display:flex;
+      gap: 10px;
+      align-items:flex-start;
+      padding: 10px 10px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.03);
+      border-radius: 12px;
+    }
+    .item input { margin-top: 2px; }
+    .item .meta {
+      flex:1;
+    }
+    .item .meta strong {
+      display:block;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+    .item .meta span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .gallery {
+      display:grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    @media (max-width: 720px) {
+      .gallery { grid-template-columns: 1fr; }
+    }
+    .gallery figure {
+      margin: 0;
+      border-radius: 14px;
+      overflow:hidden;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.03);
+    }
+    .gallery img {
+      width: 100%;
+      height: 210px;
+      object-fit: cover;
+      display:block;
+      filter: contrast(1.02) saturate(1.02);
+    }
+    .gallery figcaption {
+      padding: 10px 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .footer {
+      max-width: 1100px;
+      margin: 10px auto 0;
+      padding: 0 20px 30px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .badge {
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.04);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .badge b { color: var(--text); }
+    .ok { color: var(--good); }
+    .warn { color: var(--warn); }
+    .bad { color: var(--bad); }
+    @media print {
+      body { background: #fff; color: #000; }
+      .card { box-shadow:none; background:#fff; border:1px solid #ddd; }
+      .subtitle, .small, .rule ul, .footer, th { color:#333 !important; }
+      button, .actions { display:none !important; }
+      .wrap { grid-template-columns: 1fr; }
+      .gallery img { height: 160px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">
+      <div>
+        <h1>Pravidlá spoločného bývania</h1>
+        <p class="subtitle">
+          Tento dokument je pre 4 ľudí v spoločnom byte. Cieľ: menej chaosu, menej hádok, viac čistoty a pohody.         
+        </p>
+      </div>
+      <div class="actions">
+        <button id="btnPrint" title="Vytlačiť / uložiť do PDF">Tlačiť / PDF</button>
+        <button id="btnReset" title="Vymazať lokálne uložené zmeny">Resetovať zmeny</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="card">
+      <h2>
+        1) Základné pravidlá
+        <span class="pill">verzia: 1.0</span>
+      </h2>
+      <div class="content grid2">
+        <div class="rule">
+          <h3><span class="dot"></span> Kuchyňa (po sebe)</h3>
+          <ul>
+            <li>Riady umývam <b>hneď</b> alebo najneskôr do 2 hodín.</li>
+			<li>Zvyšky jedla zachytené v sitku vyhodím a sitko opláchnem.</li>
+            <li>Linku, sporák a drez <b>utriem</b>.</li>
+            <li>Jedlo v chladničke označím (meno + dátum), ak to nie je v tvojom vyhradenom priestore(aby sa to náhodou nevyhodilo). Pokazené veci vyhadzujem.</li>
+          </ul>
+        </div>
+
+        <div class="rule">
+          <h3><span class="dot"></span> Kúpeľňa / sprcha / vaňa</h3>
+          <ul>
+            <li>Po sprche nechám priestor čistý, ak si použil sprchovú hlavu treba ju nakloniť, aby lepšie odtiekla.</li>
+            <li>Vlasy z odtoku a z podlahy vždy vyhodím do koša (nie do umývadla/záchoda).</li>            
+            <li>Uteráky nenechávame na podlahe; vešiame na sušiak / radiátor.</li>
+			<li>Radiátor nedávame na maximum, hrozia popáleniny.</li>
+          </ul>
+        </div>
+
+        <div class="rule">
+          <h3><span class="dot"></span> WC</h3>
+          <ul>
+            <li>Po spláchnutí po sebe skontrolujem misu (ak je potreba, použi kefu a spláchni znovu).</li>            
+            <li>Keď je málo toaletného papiera, doplním.</li>
+			<li>Do WC nepatria zvyšky z jedla, radšej kôš.</li>
+          </ul>
+        </div>
+
+        <div class="rule">
+          <h3><span class="dot"></span> Nočný kľud &amp; rešpekt</h3>
+          <ul>
+            <li>Nočný kľud: <b>22:00 – 07:00</b>.</li>
+			<li>Pračka a varenie do <b>22:00</b>.</li>
+            <li>Telefónovanie a filmy cez slúchadlá, ak niekto spí.</li>
+            <li>Dvere neklepeme, nezabúchame. Vstávame/vraciame sa potichu.</li>
+          </ul>
+        </div>
+
+        <div class="rule">
+          <h3><span class="dot"></span> Svetlá, energia, bezpečnosť</h3>
+          <ul>
+            <li>Odchádzam z miestnosti = <b>zhasnem</b>.</li>
+            <li>Po varení vypnem sporák a skontrolujem, že nič nehorí.</li>
+            <li>Práčka/sušička: po praní nechám dvierka a nádobku pootvorené kvôli plesniam.</li>
+          </ul>
+        </div>
+
+        <div class="rule">
+          <h3><span class="dot"></span> Návštevy</h3>
+          <ul>
+            <li>Návštevu hlásiť netreba. Ticho večer rešpektujem.</li>
+            <li>Ak u mňa niekto prespí, riešim poriadok po sebe.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <aside class="card">
+      <h2>2) Mená &amp; rotácia upratovania <span class="pill">automaticky</span></h2>
+      <div class="content">
+        <p class="small">
+          Tabuľka nižšie sa prepočíta podľa aktuálneho týždňa.          
+        </p>
+
+        <label>Mená (4 osoby)</label>
+        <div class="grid2">
+          <input id="name1" type="text" placeholder="Helen" />
+          <input id="name2" type="text" placeholder="Sabo" />
+          <input id="name3" type="text" placeholder="Filip" />
+          <input id="name4" type="text" placeholder="Tomas" />
+        </div>
+
+        <label>Začiatok rotácie (pondelok)</label>
+        <input id="startDate" type="date" />
+		
+        <div style="height:10px"></div>
+
+        <div class="badge"><span class="ok">●</span><b>Tip:</b> Každý týždeň sa posúva o 1 miesto.</div>
+
+        <div style="height:12px"></div>
+
+        <table aria-label="Rozpis upratovania">
+          <thead>
+            <tr>
+              <th>Oblasť</th>
+              <th>Kedykoľvek tento týždeň</th>
+            </tr>
+          </thead>
+          <tbody id="rotaBody"></tbody>
+        </table>
+      </div>
+    </aside>
+
+    <section class="card">
+      <h2>3) Checklisty (rýchla kontrola)</h2>
+      <div class="content">
+        <div class="checklist" id="checklists">
+          <!-- JS will inject -->
+        </div>
+        <p class="small" style="margin-top:10px">
+          Tieto checkboxy sú len pomocník. (Ukladajú sa lokálne v prehliadači.)
+        </p>
+      </div>
+    </section>
+	
+	<section class="card">
+      <h2>4) Ako riešime problémy <span class="pill">bez drámy</span></h2>
+      <div class="content">
+        <div class="grid2">
+          <div class="rule">
+            <h3><span class="dot"></span> 24-hodinové pravidlo</h3>
+            <ul>
+              <li>Keď niečo vadí, poviem to do 24 hodín (slušne, konkrétne).</li>
+              <li>Nezbierame frustráciu “do zásoby”.</li>
+            </ul>
+          </div>
+          <div class="rule">
+            <h3><span class="dot"></span> Konkrétne, nie osobné</h3>
+            <ul>
+              <li>Hovoríme: “Včera ostali riady v dreze” namiesto “Ty si bordelár”.</li>
+              <li>Navrhneme riešenie (napr. vymeniť si týždeň, jasnejšie pravidlo, zmeniť pravidlo, pridať pravidlo a iné).</li>
+            </ul>
+          </div>
+        </div>
+        <p class="small" style="margin-top:10px">
+          Ak sa to opakuje: dohoda na “domácej porade” (10 min), prípadne rotácia úloh.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <div class="footer">
+    <div class="badge"><span class="warn">●</span><b>Mini checklist pri odchode z bytu:</b> okná zavreté, sporák vypnutý, svetlá zhasnuté, dvere zamknuté.</div>
+  </div>
+
+  <script>
+    // ---------- Storage helpers ----------
+    const store = {
+      get(key, fallback) {
+        try {
+          const v = localStorage.getItem(key);
+          return v === null ? fallback : JSON.parse(v);
+        } catch (e) {
+          return fallback;
+        }
+      },
+      set(key, value) {
+        localStorage.setItem(key, JSON.stringify(value));
+      },
+      del(key) {
+        localStorage.removeItem(key);
+      }
+    };
+
+    const els = {
+      name1: document.getElementById('name1'),
+      name2: document.getElementById('name2'),
+      name3: document.getElementById('name3'),
+      name4: document.getElementById('name4'),
+      startDate: document.getElementById('startDate'),
+      notes: document.getElementById('notes'),
+      rotaBody: document.getElementById('rotaBody'),
+      checklists: document.getElementById('checklists'),
+      btnPrint: document.getElementById('btnPrint'),
+      btnReset: document.getElementById('btnReset'),
+    };
+	function toISODateLocal(d) {
+	  const y = d.getFullYear();
+	  const m = String(d.getMonth() + 1).padStart(2, "0");
+	  const day = String(d.getDate()).padStart(2, "0");
+	  return `${y}-${m}-${day}`;
+	}
+    const DEFAULTS = {
+      names: ["Helen", "Sabo", "Filip", "Tomas"],
+      // default to nearest past Monday
+      startDate: (() => {
+        const d = new Date();
+        const day = (d.getDay() + 6) % 7; // Monday=0
+        d.setDate(d.getDate() - day);
+        d.setHours(0,0,0,0);
+        return toISODateLocal(d);
+      })(),
+      notes: ""
+    };
+
+    const TASKS = [
+      {
+        area: "Kuchyňa",
+        details: "linka, drez, sporák, mikrovlnka, podlaha pri linke",
+        checklist: [
+          ["Utrieť linku a sporák", "Jar/odmasťovač, potom do sucha."],
+          ["Drez + odtok + odkvapkávač", "Vybrať zvyšky, opláchnuť sitko, odkapkavač a aj pod ním."],
+          ["Smrad/odpad", "Vyniesť smeti, vyčistiť okolie koša."],
+          ["Podlaha", "Pozametať / pretrieť pri linke a stole."]
+        ]
+      },
+      {
+        area: "Kúpeľňa + sprcha/vaňa + WC",
+        details: "umývadlo, zrkadlo, sprchový kút/vaňa, podlaha, misa, sedátko, okolie",
+        checklist: [
+          ["Sprcha/vaňa", "Opláchnuť, odstrániť vlasy, pretrieť usadeniny."],
+          ["Umývadlo", "Vodný kameň okolo batérie a odtoku."],
+          ["Zrkadlo", "Pretrieť bez šmúh."],
+          ["Podlaha", "Pretrieť, najmä rohy."],
+		  ["Misa + kefa", "WC čistič, nechať pôsobiť, vydrhnúť."],
+          ["Sedátko + tlačidlo", "Dezinfekcia (nie agresívna na plasty)."],
+          ["Okolie", "Skontrolovať, či je všetko čisté."],
+          ["Podlaha", "Pretrieť okolo WC."]
+        ]
+      },
+      {
+        area: "Spoločné priestory",
+        details: "chodba/obývačka, prach, podlaha",
+        checklist: [
+          ["Povrchy", "Stôl, poličky, parapety."],
+          ["Podlaha", "Pozametať na hrubo, potom mopovať."],
+          ["Vetranie", "Krátke vyvetranie (5–10 min)."]
+        ]
+      },
+      {
+        area: "Odpad + doplnenie",
+        details: "smetné koše, papier, jar, hubky",
+        checklist: [
+          ["Vyniesť triedený odpad", "Plasty/papier/sklo podľa potreby."],
+          ["Doplniť papier", "WC papier, kuchynské utierky."],
+          ["Skontrolovať jar/hubku", "Keď smrdí alebo je značne opotrebovaná, vymeniť."]
+        ]
+      },
+    ];
+	function parseISODateLocal(iso) {
+	  const [y, m, d] = iso.split("-").map(Number);
+	  return new Date(y, m - 1, d, 0, 0, 0, 0); // ✅ lokálna polnoc
+	}
+    function mondayOf(date) {
+      const d = new Date(date);
+      const day = (d.getDay() + 6) % 7; // Monday=0
+      d.setDate(d.getDate() - day);
+      d.setHours(0,0,0,0);
+      return d;
+    }
+
+    function weeksBetween(a, b) {
+      const msWeek = 7 * 24 * 60 * 60 * 1000;
+      return Math.floor((mondayOf(a) - mondayOf(b)) / msWeek);
+    }
+
+    function currentRotation(names, startDateISO) {
+      const today = new Date();
+      const start = parseISODateLocal(startDateISO);
+      const w = weeksBetween(today, start);
+      // rotate by w (can be negative)
+      const n = names.length;
+      const shift = ((w % n) + n) % n;
+      const rotated = names.slice(shift).concat(names.slice(0, shift));
+      return rotated;
+    }
+
+    function renderRota() {
+      const names = [
+        els.name1.value.trim() || DEFAULTS.names[0],
+        els.name2.value.trim() || DEFAULTS.names[1],
+        els.name3.value.trim() || DEFAULTS.names[2],
+        els.name4.value.trim() || DEFAULTS.names[3],
+      ];
+      const startDateISO = els.startDate.value || DEFAULTS.startDate;
+      const rota = currentRotation(names, startDateISO);
+
+      // Map: each task to person (cyclic)
+      els.rotaBody.innerHTML = "";
+      TASKS.forEach((t, idx) => {
+        const who = rota[idx % rota.length] || names[idx % names.length];
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><b>${t.area}</b><div class="small">${t.details}</div></td>
+          <td><b>${who}</b></td>
+        `;
+        els.rotaBody.appendChild(tr);
+      });
+    }
+
+    function checklistKey(area, itemTitle) {
+      return `chk::${area}::${itemTitle}`;
+    }
+
+    function renderChecklists() {
+      els.checklists.innerHTML = "";
+      TASKS.forEach((t) => {
+        const box = document.createElement('div');
+        box.className = "rule";
+        box.innerHTML = `<h3><span class="dot"></span>${t.area}</h3>`;
+        const wrap = document.createElement('div');
+        wrap.className = "checklist";
+        t.checklist.forEach(([title, desc]) => {
+          const key = checklistKey(t.area, title);
+          const checked = store.get(key, false);
+          const row = document.createElement('div');
+          row.className = "item";
+          row.innerHTML = `
+            <input type="checkbox" ${checked ? "checked" : ""} aria-label="${title}" />
+            <div class="meta">
+              <strong>${title}</strong>
+              <span>${desc}</span>
+            </div>
+          `;
+          const cb = row.querySelector('input');
+          cb.addEventListener('change', () => {
+            store.set(key, cb.checked);
+          });
+          wrap.appendChild(row);
+        });
+        box.appendChild(wrap);
+        els.checklists.appendChild(box);
+      });
+    }
+
+    function loadSettings() {
+      const names = store.get("names", DEFAULTS.names);
+      els.name1.value = names[0] || DEFAULTS.names[0];
+      els.name2.value = names[1] || DEFAULTS.names[1];
+      els.name3.value = names[2] || DEFAULTS.names[2];
+      els.name4.value = names[3] || DEFAULTS.names[3];
+
+      els.startDate.value = store.get("startDate", DEFAULTS.startDate);      
+    }
+
+    function bind() {
+      [els.name1, els.name2, els.name3, els.name4].forEach((el, idx) => {
+        el.addEventListener('input', () => {
+          const names = [
+            els.name1.value, els.name2.value, els.name3.value, els.name4.value
+          ];
+          store.set("names", names);
+          renderRota();
+        });
+      });
+      els.startDate.addEventListener('change', () => {
+        store.set("startDate", els.startDate.value);
+        renderRota();
+      });      
+      els.btnPrint.addEventListener('click', () => window.print());
+      els.btnReset.addEventListener('click', () => {
+        if (!confirm("Naozaj chceš resetovať všetky uložené zmeny v tomto prehliadači?")) return;
+        localStorage.clear();
+        loadSettings();
+        renderRota();
+        renderChecklists();
+      });
+    }
+
+    // Init
+    loadSettings();
+    bind();
+    renderRota();
+    renderChecklists();
+  </script>
+</body>
+</html>
