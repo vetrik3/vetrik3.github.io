@@ -1018,6 +1018,1441 @@
             </div>
             <div class="inv-status ${status}">${status === "ok" ? "✓" : status === "warn" ? "⚠" : "✗"} ${labels[status]}</div>
           </div>
+          <div class="inv-actions" style="display:grid;grid-template-columns:1fr 1fr;gap:5px;min-width:90px">
+            <button onclick="markBought(${idx})" class="success" style="font-size:12px;padding:6px 8px">✓ Kúpené</button>
+            <button onclick="editInvItem(${idx})" style="font-size:12px;padding:6px 8px">✎ Upraviť</button>
+            ${item.needsBuy
+              ? `<button onclick="markNeedsBuy(${idx})" class="danger" style="font-size:12px;padding:6px 8px;opacity:.5" disabled>🛒 Dokupiť</button>`
+              : `<button onclick="markNeedsBuy(${idx})" class="danger" style="font-size:12px;padding:6px 8px">🛒 Dokupiť</button>`
+            }
+            <button onclick="deleteInvItem(${idx})" class="danger" style="font-size:12px;padding:6px 8px">✕ Zmazať</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function renderHistory() {
+    const txs = [...(pokladnica.transactions || [])].sort((a,b) => new Date(b.date)-new Date(a.date));
+    const div = document.getElementById("txList");
+    if (!txs.length) { div.innerHTML = '<p class="small">Žiadne platby. Pridaj cez "+ Platba".</p>'; return; }
+    const catIcons = { spotrebak: "🧴", chemia: "🧹", jedlo: "🍕", byt: "🏠", ine: "📦" };
+    div.innerHTML = txs.map((tx, i) => `
+      <div class="tx-row">
+        <div class="tx-icon">${catIcons[tx.cat] || "📦"}</div>
+        <div class="tx-info">
+          <div class="tx-title">${tx.desc}</div>
+          <div class="tx-sub">${tx.date} · ${tx.payer}${tx.note ? " · " + tx.note : ""}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="tx-amount ok">+€${(tx.amount||0).toFixed(2)}</div>
+          <button onclick="deleteTx('${tx.id}')" class="danger" style="padding:4px 8px;font-size:11px">✕</button>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  function renderDeposits() {
+    const deps = [...(pokladnica.deposits || [])].sort((a,b) => new Date(b.date)-new Date(a.date));
+    const div = document.getElementById("depositList");
+    if (!div) return;
+    if (!deps.length) { div.innerHTML = '<p class="small">Žiadne vklady. Pridaj cez "+ Vklad".</p>'; return; }
+    div.innerHTML = deps.map(dep => `
+      <div class="tx-row">
+        <div class="tx-icon">💳</div>
+        <div class="tx-info">
+          <div class="tx-title">${dep.payer} vložil na účet</div>
+          <div class="tx-sub">${dep.date}${dep.note ? " · " + dep.note : ""}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="tx-amount" style="color:var(--accent)">+€${(dep.amount||0).toFixed(2)}</div>
+          <button onclick="deleteDeposit('${dep.id}')" class="danger" style="padding:4px 8px;font-size:11px">✕</button>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  function renderDebts() {
+    const txs = pokladnica.transactions || [];
+    const deps = pokladnica.deposits || [];
+    const names = pokladnica.names || NAMES_DEFAULT;
+
+    // Total spent — paid from the shared account
+    const totalSpent = txs.reduce((s, t) => s + (t.amount || 0), 0);
+    // Fair share of expenses per person
+    const fairShare = totalSpent / names.length;
+
+    // How much each person deposited
+    const deposited = {};
+    names.forEach(n => deposited[n] = 0);
+    deps.forEach(d => { if (deposited[d.payer] !== undefined) deposited[d.payer] += d.amount || 0; });
+
+    // Balance per person = deposited - fairShare
+    // Positive = they are ahead (paid more than their share)
+    // Negative = they still owe money
+    const grid = document.getElementById("debtGrid");
+    grid.innerHTML = names.map(n => {
+      const dep = deposited[n] || 0;
+      const balance = dep - fairShare;
+      const cls = balance >= -0.005 ? "ok" : "bad";
+      const sign = balance >= 0 ? "+" : "";
+      const statusText = balance >= -0.005
+        ? (balance < 0.005 ? "Vyrovnaný ✓" : `Preplatok €${balance.toFixed(2)}`)
+        : `Dlhuje €${Math.abs(balance).toFixed(2)}`;
+      return `
+        <div class="debt-row">
+          <div>
+            <b>${n}</b>
+            <div class="debt-who small">vložil: €${dep.toFixed(2)} · spravodlivý podiel výdavkov: €${fairShare.toFixed(2)}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="debt-amount ${cls}">${sign}€${Math.abs(balance).toFixed(2)}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${statusText}</div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    const totalDeposited = deps.reduce((s, d) => s + (d.amount || 0), 0);
+    document.getElementById("debtNote").textContent = totalSpent > 0 || totalDeposited > 0
+      ? `Celkové výdavky: €${totalSpent.toFixed(2)} · celkové vklady: €${totalDeposited.toFixed(2)} · podiel/os.: €${fairShare.toFixed(2)}`
+      : "Žiadne záznamy ešte.";
+  }
+
+  function updatePokladnikInfo() {
+    const el = document.getElementById("pokladnikInfo");
+    el.innerHTML = `Pokladník: <b>${cfg.treasurer || "?"}</b> · Ja: <b>${cfg.myName || "?"}</b>`;
+  }
+
+  // =====================================================================
+  // ACTIONS
+  // =====================================================================
+  window.markNeedsBuy = async function(idx) {
+    pokladnica.inventory[idx].needsBuy = true;
+    await syncSave();
+  };
+
+  window.markBought = async function(idx) {
+    const item = pokladnica.inventory[idx];
+    const today = new Date().toISOString().split("T")[0];
+    item.lastDate = today;
+    item.lastBuyer = cfg.myName || NAMES_DEFAULT[0];
+    item.needsBuy = false;
+    await syncSave();
+  };
+
+  window.editInvItem = function(idx) {
+    openInvModal(idx);
+  };
+
+  window.deleteInvItem = async function(idx) {
+    if (!confirm("Naozaj zmazať túto položku inventára?")) return;
+    pokladnica.inventory.splice(idx, 1);
+    await syncSave();
+  };
+
+  window.deleteTx = async function(id) {
+    if (!confirm("Naozaj zmazať túto platbu?")) return;
+    pokladnica.transactions = pokladnica.transactions.filter(t => t.id !== id);
+    await syncSave();
+  };
+
+  window.deleteDeposit = async function(id) {
+    if (!confirm("Naozaj zmazať tento vklad?")) return;
+    pokladnica.deposits = (pokladnica.deposits || []).filter(d => d.id !== id);
+    await syncSave();
+  };
+
+  // =====================================================================
+  // MODALS
+  // =====================================================================
+  let editingInvIdx = null;
+
+  function openTxModal() {
+    const today = new Date().toISOString().split("T")[0];
+    document.getElementById("txDesc").value = "";
+    document.getElementById("txAmount").value = "";
+    document.getElementById("txDate").value = today;
+    document.getElementById("txNote").value = "";
+    fillSelect("txPayer", pokladnica.names || NAMES_DEFAULT, cfg.myName);
+    document.getElementById("modalTxTitle").textContent = "+ Nová platba";
+    document.getElementById("modalTx").style.display = "flex";
+  }
+
+  function openDepositModal() {
+    const today = new Date().toISOString().split("T")[0];
+    document.getElementById("depAmount").value = "";
+    document.getElementById("depDate").value = today;
+    document.getElementById("depNote").value = "";
+    // render checkboxes — all unchecked by default + select all
+    const names = pokladnica.names || NAMES_DEFAULT;
+    const checkStyle = `display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.03);text-transform:none;letter-spacing:0;font-size:14px;font-weight:400;color:var(--text);margin:0`;
+    const cbStyle = `width:16px;height:16px;flex:0 0 auto;accent-color:var(--accent)`;
+    document.getElementById("depPayerChecks").innerHTML =
+      `<label style="${checkStyle};border-color:rgba(124,212,255,.3);background:rgba(124,212,255,.06);font-weight:600" id="lblSelectAll">
+        <input type="checkbox" id="cbSelectAll" style="${cbStyle}" />
+        Označiť všetkých
+      </label>` +
+      names.map(n => `
+      <label style="${checkStyle}">
+        <input type="checkbox" data-name="${n}" style="${cbStyle}" />
+        ${n}
+      </label>
+    `).join("");
+    // wire select-all
+    document.getElementById("cbSelectAll").onchange = function() {
+      document.querySelectorAll("#depPayerChecks input[data-name]").forEach(cb => cb.checked = this.checked);
+    };
+    // keep select-all in sync
+    document.getElementById("depPayerChecks").addEventListener("change", function(e) {
+      if (e.target.dataset.name) {
+        const all = [...document.querySelectorAll("#depPayerChecks input[data-name]")];
+        document.getElementById("cbSelectAll").checked = all.every(cb => cb.checked);
+      }
+    });
+    document.getElementById("modalDeposit").style.display = "flex";
+  }
+
+  function openInvModal(idx = null) {
+    editingInvIdx = idx;
+    fillSelect("invBuyer", pokladnica.names || NAMES_DEFAULT, cfg.myName);
+    const today = new Date().toISOString().split("T")[0];
+    if (idx !== null) {
+      const item = pokladnica.inventory[idx];
+      document.getElementById("invName").value = item.name;
+      document.getElementById("invIcon").value = item.icon || "";
+      document.getElementById("invCat").value = item.cat || "spotrebak";
+      document.getElementById("invDate").value = item.lastDate || "";
+      document.getElementById("invBuyer").value = item.lastBuyer || cfg.myName;
+      document.getElementById("invPrice").value = item.price || "";
+      document.getElementById("invFreq").value = item.freq || 30;
+      document.getElementById("invNote").value = item.note || "";
+      document.getElementById("modalInvTitle").textContent = "✎ Upraviť položku";
+    } else {
+      document.getElementById("invName").value = "";
+      document.getElementById("invIcon").value = "📦";
+      document.getElementById("invCat").value = "spotrebak";
+      document.getElementById("invDate").value = today;
+      document.getElementById("invBuyer").value = cfg.myName;
+      document.getElementById("invPrice").value = "";
+      document.getElementById("invFreq").value = "30";
+      document.getElementById("invNote").value = "";
+      document.getElementById("modalInvTitle").textContent = "+ Nová položka";
+    }
+    document.getElementById("modalInv").style.display = "flex";
+  }
+
+  function fillSelect(id, names, selected) {
+    const el = document.getElementById(id);
+    el.innerHTML = names.map(n => `<option value="${n}" ${n===selected?"selected":""}>${n}</option>`).join("");
+  }
+
+  function openSyncModal() {
+    document.getElementById("cfgMyName").value = cfg.myName || "Tomas";
+    document.getElementById("cfgTreasurer").value = cfg.treasurer || "Tomas";
+    document.getElementById("modalSync").style.display = "flex";
+  }
+
+  // =====================================================================
+  // EVENTS
+  // =====================================================================
+  document.getElementById("btnSyncConfig").onclick = openSyncModal;
+  document.getElementById("btnSyncCancel").onclick = () => document.getElementById("modalSync").style.display = "none";
+  document.getElementById("btnSyncSave").onclick = async () => {
+    cfg.myName = document.getElementById("cfgMyName").value;
+    cfg.treasurer = document.getElementById("cfgTreasurer").value;
+    cfg.binId = BIN_ID;
+    cfg.apiKey = BIN_KEY;
+    ls.set("sync_cfg", cfg);
+    document.getElementById("modalSync").style.display = "none";
+    updatePokladnikInfo();
+    renderAll();
+  };
+
+  document.getElementById("btnRefresh").onclick = () => syncLoad();
+  document.addEventListener("click", function(e) {
+    if (e.target && e.target.id === "btnCopyIban") {
+      navigator.clipboard.writeText("SK2409000000005035035898").then(() => {
+        e.target.textContent = "✓ Skopírované";
+        setTimeout(() => e.target.textContent = "📋 Kopírovať", 1800);
+      });
+    }
+  });
+  // deposit buttons (two: header + tab)
+  const openDep = () => openDepositModal();
+  document.getElementById("btnAddDeposit2").onclick = openDep;
+  document.getElementById("btnDepCancel").onclick = () => document.getElementById("modalDeposit").style.display = "none";
+  document.getElementById("btnDepSave").onclick = async () => {
+    const amount = parseFloat(document.getElementById("depAmount").value);
+    if (isNaN(amount) || amount <= 0) { alert("Zadaj sumu!"); return; }
+    const checked = [...document.querySelectorAll("#depPayerChecks input[type=checkbox]:checked")].map(el => el.dataset.name);
+    if (!checked.length) { alert("Vyber aspoň jednu osobu!"); return; }
+    const date = document.getElementById("depDate").value;
+    const note = document.getElementById("depNote").value.trim();
+    if (!pokladnica.deposits) pokladnica.deposits = [];
+    const base = Date.now();
+    checked.forEach((name, i) => {
+      pokladnica.deposits.push({
+        id: "dep_" + (base + i),
+        amount,
+        date,
+        payer: name,
+        note,
+        addedBy: cfg.myName
+      });
+    });
+    document.getElementById("modalDeposit").style.display = "none";
+    await syncSave();
+  };
+  document.getElementById("btnAddTx").onclick = openTxModal;
+  document.getElementById("btnTxCancel").onclick = () => document.getElementById("modalTx").style.display = "none";
+  document.getElementById("btnTxSave").onclick = async () => {
+    const desc = document.getElementById("txDesc").value.trim();
+    const amount = parseFloat(document.getElementById("txAmount").value);
+    if (!desc || isNaN(amount) || amount <= 0) { alert("Vyplň popis a sumu!"); return; }
+    const tx = {
+      id: "tx_" + Date.now(),
+      desc,
+      amount,
+      date: document.getElementById("txDate").value,
+      payer: document.getElementById("txPayer").value,
+      cat: document.getElementById("txCat").value,
+      note: document.getElementById("txNote").value.trim(),
+      addedBy: cfg.myName
+    };
+    pokladnica.transactions.push(tx);
+    document.getElementById("modalTx").style.display = "none";
+    await syncSave();
+  };
+
+  document.getElementById("btnAddInv").onclick = () => openInvModal(null);
+  document.getElementById("btnInvCancel").onclick = () => document.getElementById("modalInv").style.display = "none";
+  document.getElementById("btnInvSave").onclick = async () => {
+    const name = document.getElementById("invName").value.trim();
+    if (!name) { alert("Vyplň názov!"); return; }
+    const item = {
+      id: editingInvIdx !== null ? pokladnica.inventory[editingInvIdx].id : "inv_" + Date.now(),
+      name,
+      icon: document.getElementById("invIcon").value.trim() || "📦",
+      cat: document.getElementById("invCat").value,
+      lastDate: document.getElementById("invDate").value || null,
+      lastBuyer: document.getElementById("invBuyer").value || null,
+      price: parseFloat(document.getElementById("invPrice").value) || null,
+      freq: parseInt(document.getElementById("invFreq").value) || 30,
+      note: document.getElementById("invNote").value.trim()
+    };
+    if (editingInvIdx !== null) {
+      pokladnica.inventory[editingInvIdx] = item;
+    } else {
+      pokladnica.inventory.push(item);
+    }
+    document.getElementById("modalInv").style.display = "none";
+    await syncSave();
+  };
+
+  // Close modals on overlay click
+  ["modalSync","modalTx","modalInv","modalDeposit"].forEach(id => {
+    document.getElementById(id).addEventListener("click", function(e) {
+      if (e.target === this) this.style.display = "none";
+    });
+  });
+
+  // Tabs
+  document.querySelectorAll(".tab").forEach(tab => {
+    tab.onclick = () => {
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+      tab.classList.add("active");
+      const panel = document.getElementById("tab-" + tab.dataset.tab);
+      if (panel) panel.classList.add("active");
+      // wire deposit tab button after tab renders
+      const depBtn = document.getElementById("btnAddDeposit");
+      if (depBtn && !depBtn._wired) { depBtn.onclick = openDep; depBtn._wired = true; }
+    };
+  });
+
+  // =====================================================================
+  // ROTATION (original logic)
+  // =====================================================================
+  const TASKS = [
+    { area: "Kuchyňa + Odpad + Spotrebák", details: "linka, drez, sporák, mikrovlnka, smetné koše, papier, jar, hubky",
+      checklist: [["Utrieť linku a sporák","Jar/odmasťovač, potom do sucha."],["Drez + odtok + odkvapkávač","Vybrať zvyšky, opláchnuť sitko."],["Odpad","Vyniesť smeti, vyčistiť okolie koša."],["Vyniesť triedený odpad","Plasty/papier/sklo podľa potreby."],["Doplniť papier","WC papier, kuchynské utierky."],["Skontrolovať jar/hubku","Keď smrdí alebo je opotrebovaná, vymeniť."]]},
+    { area: "Kúpeľňa + sprcha/vaňa + WC", details: "umývadlo, zrkadlo, sprchový kút/vaňa, misa, sedátko, okolie",
+      checklist: [["Sprcha/vaňa","Opláchnuť, odstrániť vlasy, pretrieť usadeniny."],["Umývadlo","Vodný kameň okolo batérie a odtoku."],["Zrkadlo","Pretrieť bez šmúh."],["Misa + kefa","WC čistič, nechať pôsobiť, vydrhnúť."],["Sedátko + tlačidlo","Dezinfekcia."]]},
+    { area: "Spoločné priestory", details: "chodba/obývačka/kuchyňa/kúpeľňa, prach, podlaha",
+      checklist: [["Povrchy","Stôl, poličky, parapety."],["Podlaha","Pozametať, potom mopovať."],["Vetranie","Krátke vyvetranie (5–10 min)."]]}
+  ];
+
+  const lsStore = {
+    get(k,d){ try{ const v=localStorage.getItem(k); return v===null?d:JSON.parse(v); }catch(e){return d;} },
+    set(k,v){ localStorage.setItem(k,JSON.stringify(v)); }
+  };
+
+  const n1=document.getElementById("name1"),n2=document.getElementById("name2"),n3=document.getElementById("name3"),n4=document.getElementById("name4");
+  const startDate=document.getElementById("startDate");
+
+  function toISODateLocal(d){ const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0"); return `${y}-${m}-${day}`; }
+  function parseISODateLocal(iso){ const [y,m,d]=iso.split("-").map(Number); return new Date(y,m-1,d,0,0,0,0); }
+  function mondayOf(date){ const d=new Date(date),day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); d.setHours(0,0,0,0); return d; }
+  function weeksBetween(a,b){ return Math.floor((mondayOf(a)-mondayOf(b))/(7*24*60*60*1000)); }
+  function currentRotation(names,startISO){ const w=weeksBetween(new Date(),parseISODateLocal(startISO)),n=names.length,shift=((w%n)+n)%n; return names.slice(shift).concat(names.slice(0,shift)); }
+
+  const DEFAULTS = {
+    names:["Helen","Samo","Filip","Tomas"],
+    startDate:(()=>{ const d=new Date(),day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); d.setHours(0,0,0,0); return toISODateLocal(d); })()
+  };
+
+  function renderRota(){
+    const names=[n1.value.trim()||DEFAULTS.names[0],n2.value.trim()||DEFAULTS.names[1],n3.value.trim()||DEFAULTS.names[2],n4.value.trim()||DEFAULTS.names[3]];
+    const rota=currentRotation(names,startDate.value||DEFAULTS.startDate);
+    document.getElementById("rotaBody").innerHTML="";
+    TASKS.forEach((t,idx)=>{
+      const who=rota[idx%rota.length];
+      const tr=document.createElement("tr");
+      tr.innerHTML=`<td><b>${t.area}</b><div class="small">${t.details}</div></td><td><b>${who}</b></td>`;
+      document.getElementById("rotaBody").appendChild(tr);
+    });
+  }
+
+  function renderChecklists(){
+    const c=document.getElementById("checklists");
+    c.innerHTML="";
+    TASKS.forEach(t=>{
+      const box=document.createElement("div");
+      box.className="rule";
+      box.innerHTML=`<h3><span class="dot"></span>${t.area}</h3>`;
+      const wrap=document.createElement("div");
+      wrap.className="checklist";
+      t.checklist.forEach(([title,desc])=>{
+        const key=`chk::${t.area}::${title}`;
+        const checked=lsStore.get(key,false);
+        const row=document.createElement("div");
+        row.className="item";
+        row.innerHTML=`<input type="checkbox" ${checked?"checked":""} /><div class="meta"><strong>${title}</strong><span>${desc}</span></div>`;
+        row.querySelector("input").addEventListener("change",e=>lsStore.set(key,e.target.checked));
+        wrap.appendChild(row);
+      });
+      box.appendChild(wrap);
+      c.appendChild(box);
+    });
+  }
+
+  function loadSettings(){
+    const names=lsStore.get("names",DEFAULTS.names);
+    n1.value=names[0]||DEFAULTS.names[0]; n2.value=names[1]||DEFAULTS.names[1];
+    n3.value=names[2]||DEFAULTS.names[2]; n4.value=names[3]||DEFAULTS.names[3];
+    startDate.value=lsStore.get("startDate",DEFAULTS.startDate);
+  }
+
+  [n1,n2,n3,n4].forEach(el=>el.addEventListener("input",()=>{
+    lsStore.set("names",[n1.value,n2.value,n3.value,n4.value]);
+    renderRota();
+  }));
+  startDate.addEventListener("change",()=>{ lsStore.set("startDate",startDate.value); renderRota(); });
+
+  document.getElementById("btnPrint").onclick=()=>window.print();
+  document.getElementById("btnReset").onclick=()=>{
+    if(!confirm("Naozaj chceš resetovať všetky uložené zmeny?")) return;
+    localStorage.clear();
+    loadSettings(); renderRota(); renderChecklists();
+    pokladnica={ transactions:[], inventory:JSON.parse(JSON.stringify(DEFAULT_INVENTORY)), names:[...NAMES_DEFAULT] };
+    renderAll();
+  };
+
+  // =====================================================================
+  // INIT
+  // =====================================================================
+  loadSettings();
+  renderRota();
+  renderChecklists();
+  updatePokladnikInfo();
+  syncLoad(); // credentials hardcoded, always sync
+  </script>
+</body>
+</html>      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .title {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 3vw, 44px);
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      margin: 10px 0 0;
+      color: var(--muted);
+      max-width: 70ch;
+      line-height: 1.55;
+    }
+    .actions {
+      display:flex;
+      gap:10px;
+      flex-wrap: wrap;
+    }
+    button {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.06);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 12px;
+      cursor: pointer;
+      box-shadow: none;
+      transition: transform .06s ease, background .2s ease;
+      font-weight: 600;
+    }
+    button:hover { background: rgba(255,255,255,.10); }
+    button:active { transform: translateY(1px); }
+    button.primary {
+      background: rgba(124,212,255,.15);
+      border-color: rgba(124,212,255,.35);
+      color: var(--accent);
+    }
+    button.primary:hover { background: rgba(124,212,255,.25); }
+    button.danger {
+      background: rgba(251,113,133,.12);
+      border-color: rgba(251,113,133,.3);
+      color: var(--bad);
+    }
+    button.danger:hover { background: rgba(251,113,133,.22); }
+    button.success {
+      background: rgba(110,231,183,.12);
+      border-color: rgba(110,231,183,.3);
+      color: var(--good);
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 20px 52px;
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 18px;
+    }
+    @media (max-width: 980px) {
+      .wrap { grid-template-columns: 1fr; }
+    }
+    .full-width { grid-column: 1 / -1; }
+    .card {
+      background: rgba(17,24,36,.85);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .card h2 {
+      margin: 0;
+      padding: 16px 18px;
+      font-size: 18px;
+      border-bottom: 1px solid var(--border);
+      display:flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .card .content {
+      padding: 16px 18px 18px;
+    }
+    .pill {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.04);
+      white-space: nowrap;
+    }
+    .pill.green { color: var(--good); border-color: rgba(110,231,183,.3); background: rgba(110,231,183,.07); }
+    .pill.yellow { color: var(--warn); border-color: rgba(251,191,36,.3); background: rgba(251,191,36,.07); }
+    .pill.red { color: var(--bad); border-color: rgba(251,113,133,.3); background: rgba(251,113,133,.07); }
+    .grid2 {
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 720px) {
+      .grid2 { grid-template-columns: 1fr; }
+    }
+    .rule {
+      border: 1px dashed rgba(255,255,255,.14);
+      border-radius: 14px;
+      padding: 12px 12px 10px;
+      background: rgba(255,255,255,.03);
+    }
+    .rule h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      display:flex;
+      align-items:center;
+      gap: 8px;
+    }
+    .dot {
+      width:10px; height:10px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px rgba(124,212,255,.15);
+      flex: 0 0 auto;
+    }
+    .rule ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 12px;
+    }
+    th, td {
+      border-bottom: 1px solid rgba(255,255,255,.10);
+      padding: 10px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    tr:last-child td { border-bottom: none; }
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    input[type="text"], input[type="date"], input[type="number"], select, textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 12px;
+      outline: none;
+      font-family: var(--sans);
+      font-size: 14px;
+      transition: border-color .2s;
+    }
+    input[type="text"]:focus, input[type="date"]:focus, input[type="number"]:focus, select:focus, textarea:focus {
+      border-color: rgba(124,212,255,.4);
+    }
+    select option { background: #1a2333; }
+    textarea { min-height: 110px; resize: vertical; }
+    label {
+      display:block;
+      color: var(--muted);
+      font-size: 12px;
+      margin: 10px 0 6px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-weight: 700;
+    }
+    .checklist {
+      display:grid;
+      gap: 10px;
+    }
+    .item {
+      display:flex;
+      gap: 10px;
+      align-items:flex-start;
+      padding: 10px 10px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.03);
+      border-radius: 12px;
+    }
+    .item input { margin-top: 2px; }
+    .item .meta { flex:1; }
+    .item .meta strong { display:block; font-size: 14px; margin-bottom: 4px; }
+    .item .meta span { color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .footer {
+      max-width: 1100px;
+      margin: 10px auto 0;
+      padding: 0 20px 30px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .badge {
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.04);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .badge b { color: var(--text); }
+    .ok { color: var(--good); }
+    .warn { color: var(--warn); }
+    .bad { color: var(--bad); }
+
+    /* ---- Pokladnica ---- */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .stat-box {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      background: rgba(255,255,255,.03);
+    }
+    .stat-box .stat-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .stat-box .stat-val {
+      font-size: 24px;
+      font-weight: 700;
+      font-family: var(--mono);
+    }
+    .stat-box .stat-sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.65);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+      backdrop-filter: blur(4px);
+    }
+    .modal {
+      background: #141e2c;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      width: 100%;
+      max-width: 460px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.6);
+    }
+    .modal h3 { margin: 0 0 16px; font-size: 18px; }
+    .modal-footer {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 16px;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .inventory-grid {
+      display: grid;
+      gap: 10px;
+    }
+    .inv-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255,255,255,.03);
+    }
+    .inv-item .inv-icon {
+      font-size: 22px;
+      flex: 0 0 auto;
+    }
+    .inv-item .inv-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .inv-item .inv-name {
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .inv-item .inv-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .inv-item .inv-actions {
+      display: flex;
+      gap: 6px;
+      flex: 0 0 auto;
+    }
+    .inv-item button {
+      padding: 6px 10px;
+      font-size: 12px;
+      border-radius: 8px;
+    }
+    .inv-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+      margin-top: 4px;
+    }
+    .inv-status.ok { background: rgba(110,231,183,.1); color: var(--good); border: 1px solid rgba(110,231,183,.25); }
+    .inv-status.warn { background: rgba(251,191,36,.1); color: var(--warn); border: 1px solid rgba(251,191,36,.25); }
+    .inv-status.bad { background: rgba(251,113,133,.1); color: var(--bad); border: 1px solid rgba(251,113,133,.25); }
+    .tx-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .tx-row:last-child { border-bottom: none; }
+    .tx-icon {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+      flex: 0 0 auto;
+      background: rgba(255,255,255,.06);
+    }
+    .tx-info { flex: 1; min-width: 0; }
+    .tx-title { font-size: 14px; font-weight: 600; }
+    .tx-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .tx-amount {
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 15px;
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    .sync-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--border);
+      margin-bottom: 14px;
+      font-size: 13px;
+      flex-wrap: wrap;
+    }
+    .sync-bar .sync-status { flex: 1; color: var(--muted); }
+    .debt-grid {
+      display: grid;
+      gap: 8px;
+    }
+    .debt-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.03);
+      font-size: 14px;
+    }
+    .debt-row .debt-who { color: var(--muted); }
+    .debt-row .debt-amount { font-family: var(--mono); font-weight: 700; }
+    .tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+    }
+    .tab {
+      padding: 7px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      transition: all .2s;
+    }
+    .tab.active {
+      background: rgba(124,212,255,.12);
+      border-color: rgba(124,212,255,.3);
+      color: var(--accent);
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .config-section {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      background: rgba(255,255,255,.02);
+      margin-bottom: 14px;
+    }
+    .config-section h4 { margin: 0 0 10px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
+
+    @media print {
+      body { background: #fff; color: #000; }
+      .card { box-shadow:none; background:#fff; border:1px solid #ddd; }
+      .subtitle, .small, .rule ul, .footer, th { color:#333 !important; }
+      button, .actions, .modal-overlay, .sync-bar { display:none !important; }
+      .wrap { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">
+      <div>
+        <h1>Pravidlá spoločného bývania</h1>
+        <p class="subtitle">
+          Tento dokument je pre 4 ľudí v spoločnom byte. <br>Cieľ: menej chaosu, menej hádok, viac čistoty a pohody.
+        </p>
+      </div>
+      <div class="actions">
+        <button id="btnPrint">Tlačiť / PDF</button>
+        <button id="btnReset">Resetovať zmeny</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+
+    <!-- ===== 1. Základné pravidlá ===== -->
+    <section class="card">
+      <h2>1) Základné pravidlá <span class="pill">verzia: 1.0</span></h2>
+      <div class="content grid2">
+        <div class="rule">
+          <h3><span class="dot"></span> Kuchyňa (po sebe)</h3>
+          <ul>
+            <li>Riady umývam <b>hneď</b> alebo najneskôr do 2 hodín.</li>
+            <li>Zvyšky jedla zachytené v sitku vyhodím a sitko opláchnem.</li>
+            <li>Linku, sporák a drez <b>utriem</b>.</li>
+            <li>Po použití kanvice vodu vylejem.</li>
+            <li>Jedlo v chladničke označím (meno + dátum). Pokazené veci vyhadzujem.</li>
+          </ul>
+        </div>
+        <div class="rule">
+          <h3><span class="dot"></span> Kúpeľňa / sprcha / vaňa</h3>
+          <ul>
+            <li>Po sprche nechám priestor čistý, sprchovú hlavu nakloním.</li>
+            <li>Vlasy/chlpy z odtoku a podlahy vždy do koša.</li>
+            <li>Uteráky nenechávame na podlahe; vešiame na sušiak/radiátor.</li>
+            <li>Radiátor nedávame na maximum, hrozia popáleniny.</li>
+          </ul>
+        </div>
+        <div class="rule">
+          <h3><span class="dot"></span> WC</h3>
+          <ul>
+            <li>Po spláchnutí skontrolujem misu (kefa ak treba).</li>
+            <li>Keď je málo toaletného papiera, doplním.</li>
+            <li>Do WC nepatria zvyšky jedla, radšej kôš.</li>
+          </ul>
+        </div>
+        <div class="rule">
+          <h3><span class="dot"></span> Nočný kľud &amp; rešpekt</h3>
+          <ul>
+            <li>Nočný kľud: <b>22:00 – 07:00</b>.</li>
+            <li>Pračka a varenie do <b>22:00</b>.</li>
+            <li>S dverami nebúchame. Vracanie mimo nočného kľudu potichu.</li>
+          </ul>
+        </div>
+        <div class="rule">
+          <h3><span class="dot"></span> Svetlá, energia, bezpečnosť</h3>
+          <ul>
+            <li>Odchádzam z miestnosti = <b>zhasnem</b>.</li>
+            <li>Po varení vypnem sporák a skontrolujem.</li>
+            <li>Práčka: dvierka a nádobku pootvorené kvôli plesniam.</li>
+          </ul>
+        </div>
+        <div class="rule">
+          <h3><span class="dot"></span> Návštevy</h3>
+          <ul>
+            <li>Návštevu hlásiť netreba. Ticho večer rešpektujem.</li>
+            <li>Ak u mňa niekto prespí, riešim poriadok po sebe.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 2. Riešenie problémov ===== -->
+    <section class="card">
+      <h2>2) Ako riešime problémy <span class="pill">bez drámy</span></h2>
+      <div class="content">
+        <div class="grid2">
+          <div class="rule">
+            <h3><span class="dot"></span> 24-hodinové pravidlo</h3>
+            <ul>
+              <li>Keď niečo vadí, poviem to do 24 hodín (slušne, konkrétne).</li>
+              <li>Nezbierame frustráciu "do zásoby".</li>
+            </ul>
+          </div>
+          <div class="rule">
+            <h3><span class="dot"></span> Konkrétne, nie osobné</h3>
+            <ul>
+              <li>"Včera ostali riady v dreze" namiesto "Ty si bordelár".</li>
+              <li>Navrhneme riešenie alebo zmenu pravidla.</li>
+            </ul>
+          </div>
+        </div>
+        <p class="small" style="margin-top:10px">
+          Ak sa to opakuje: dohoda na "domácej porade" (10 min), prípadne rotácia úloh.
+        </p>
+      </div>
+    </section>
+
+    <!-- ===== 3. Rotácia upratovania ===== -->
+    <aside class="card">
+      <h2>3) Mená &amp; rotácia upratovania <span class="pill">automaticky</span></h2>
+      <div class="content">
+        <p class="small">Tabuľka sa prepočíta podľa aktuálneho týždňa.</p>
+        <div class="grid2" style="display:none">
+          <input id="name1" type="text" placeholder="Helen" />
+          <input id="name2" type="text" placeholder="Sabo" />
+          <input id="name3" type="text" placeholder="Filip" />
+          <input id="name4" type="text" placeholder="Tomas" />
+        </div>
+        <label>Začiatok rotácie (pondelok)</label>
+        <input id="startDate" type="date" />
+        <div style="height:10px"></div>
+        <div class="badge"><span class="ok">●</span><b>Tip:</b> Každý týždeň sa posúva o 1 miesto.</div>
+        <div style="height:12px"></div>
+        <table aria-label="Rozpis upratovania">
+          <thead><tr><th>Oblasť</th><th>Kedykoľvek tento týždeň</th></tr></thead>
+          <tbody id="rotaBody"></tbody>
+        </table>
+      </div>
+    </aside>
+
+    <!-- ===== 4. Checklisty ===== -->
+    <section class="card">
+      <h2>4) Checklisty (rýchla kontrola)</h2>
+      <div class="content">
+        <div class="checklist" id="checklists"></div>
+        <p class="small" style="margin-top:10px">Tieto checkboxy sú len pomocník. (Ukladajú sa lokálne v prehliadači.)</p>
+      </div>
+    </section>
+
+    <!-- ===== 5. POKLADNICA ===== -->
+    <section class="card full-width">
+      <h2>
+        5) 💰 Pokladnica bytu
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span class="pill" id="syncStatusPill">⚙ Nenastavené</span>
+          <button id="btnSyncConfig">👤 Moje meno</button>
+          <button id="btnRefresh">↻ Obnoviť</button>
+          <button id="btnAddTx">+ Platba</button>
+          <button id="btnAddDeposit2">💳 Vklad</button>
+          <button id="btnAddInv">+ Položka inventára</button>
+        </div>
+      </h2>
+      <div class="content">
+
+        <!-- Tabs -->
+        <div class="tabs">
+          <button class="tab active" data-tab="overview">Prehľad</button>
+          <button class="tab" data-tab="inventory">🧴 Inventár</button>
+          <button class="tab" data-tab="deposits">💳 Vklady na účet</button>
+          <button class="tab" data-tab="history">📋 História platieb</button>
+          <button class="tab" data-tab="debts">⚖️ Dlhy</button>
+        </div>
+
+        <!-- OVERVIEW -->
+        <div class="tab-panel active" id="tab-overview">
+          <div class="stats-grid" id="statsGrid"></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid rgba(124,212,255,.25);border-radius:14px;background:rgba(124,212,255,.06);margin-top:14px;flex-wrap:wrap">
+            <span style="font-size:18px">&#127974;</span>
+            <div>
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:3px">Číslo účtu (IBAN)</div>
+              <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent);letter-spacing:.04em">SK24 0900 0000 0050 3503 5898</div>
+            </div>
+            <button id="btnCopyIban" style="margin-left:auto;padding:7px 12px;font-size:12px">&#128203; Kopírovať</button>
+          </div>
+          <p class="small" id="pokladnikInfo" style="margin:4px 0 0"></p>
+        </div>
+
+        <!-- INVENTORY -->
+        <div class="tab-panel" id="tab-inventory">
+          <div class="inventory-grid" id="inventoryGrid"></div>
+        </div>
+
+        <!-- DEPOSITS -->
+        <div class="tab-panel" id="tab-deposits">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+            <p class="small" style="margin:0">Vklady na spoločný účet. Zostatok = vklady − výdavky.</p>
+            <button class="primary" id="btnAddDeposit">+ Vklad</button>
+          </div>
+          <div id="depositList"></div>
+        </div>
+
+        <!-- HISTORY -->
+        <div class="tab-panel" id="tab-history">
+          <div id="txList"></div>
+        </div>
+
+        <!-- DEBTS -->
+        <div class="tab-panel" id="tab-debts">
+          <p class="small" style="margin-bottom:12px">Koľko kto prispel vs. spravodlivý podiel (rovnomerne rozdelené výdavky).</p>
+          <div class="debt-grid" id="debtGrid"></div>
+          <p class="small" style="margin-top:12px" id="debtNote"></p>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <div class="footer">
+    <div class="badge"><span class="warn">●</span><b>Mini checklist pri odchode z bytu:</b> okná zavreté, sporák vypnutý, svetlá zhasnuté, dvere zamknuté.</div>
+  </div>
+
+  <!-- ===== MODALS ===== -->
+
+  <!-- Identity modal -->
+  <div class="modal-overlay" id="modalSync" style="display:none">
+    <div class="modal">
+      <h3>👤 Kto som ja?</h3>
+      <p class="small" style="margin-bottom:16px">
+        Vyber svoje meno — bude sa ukazovať pri platbách a nákupoch.
+      </p>
+      <label>Moje meno</label>
+      <select id="cfgMyName">
+        <option value="Helen">Helen</option>
+        <option value="Samo">Samo</option>
+        <option value="Filip">Filip</option>
+        <option value="Tomas" selected>Tomas</option>
+      </select>
+      <label>Kto je pokladník</label>
+      <select id="cfgTreasurer">
+        <option value="Helen">Helen</option>
+        <option value="Samo">Samo</option>
+        <option value="Filip">Filip</option>
+        <option value="Tomas" selected>Tomas</option>
+      </select>
+      <div class="modal-footer">
+        <button id="btnSyncCancel">Zrušiť</button>
+        <button class="primary" id="btnSyncSave">Uložiť a načítať</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add deposit modal -->
+  <div class="modal-overlay" id="modalDeposit" style="display:none">
+    <div class="modal">
+      <h3>💳 Vklad na spoločný účet</h3>
+      <label>Suma na osobu (€)</label>
+      <input type="number" id="depAmount" placeholder="20.00" min="0" step="0.01" />
+      <label>Dátum</label>
+      <input type="date" id="depDate" />
+      <label>Kto vložil</label>
+      <div id="depPayerChecks" style="display:grid;gap:8px;margin-top:4px"></div>
+      <label style="margin-top:12px">Poznámka (nepovinné)</label>
+      <input type="text" id="depNote" placeholder="napr. mesačný príspevok, január" />
+      <div class="modal-footer">
+        <button id="btnDepCancel">Zrušiť</button>
+        <button class="primary" id="btnDepSave">Uložiť vklady</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add transaction modal -->
+  <div class="modal-overlay" id="modalTx" style="display:none">
+    <div class="modal">
+      <h3 id="modalTxTitle">+ Nová platba</h3>
+      <label>Popis</label>
+      <input type="text" id="txDesc" placeholder="Toaletný papier, jar, ..." />
+      <div class="form-row">
+        <div>
+          <label>Suma (€)</label>
+          <input type="number" id="txAmount" placeholder="4.50" min="0" step="0.01" />
+        </div>
+        <div>
+          <label>Dátum</label>
+          <input type="date" id="txDate" />
+        </div>
+      </div>
+      <label>Kto zaplatil</label>
+      <select id="txPayer"></select>
+      <label>Kategória</label>
+      <select id="txCat">
+        <option value="spotrebak">🧴 Spotrebák (jar, papier, ...)</option>
+        <option value="chemia">🧹 Čistiaca chémia</option>
+        <option value="jedlo">🍕 Spoločné jedlo/nápoje</option>
+        <option value="byt">🏠 Byt (žiarovky, náradie, ...)</option>
+        <option value="ine">📦 Iné</option>
+      </select>
+      <label>Poznámka (nepovinné)</label>
+      <input type="text" id="txNote" placeholder="napr. Kaufland, 2 balenia" />
+      <div class="modal-footer">
+        <button id="btnTxCancel">Zrušiť</button>
+        <button class="primary" id="btnTxSave">Uložiť</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add inventory item modal -->
+  <div class="modal-overlay" id="modalInv" style="display:none">
+    <div class="modal">
+      <h3 id="modalInvTitle">+ Nová položka inventára</h3>
+      <label>Názov</label>
+      <input type="text" id="invName" placeholder="Jar, hubky, toaletný papier, ..." />
+      <div class="form-row">
+        <div>
+          <label>Ikona (emoji)</label>
+          <input type="text" id="invIcon" placeholder="🧴" maxlength="4" />
+        </div>
+        <div>
+          <label>Kategória</label>
+          <select id="invCat">
+            <option value="spotrebak">🧴 Spotrebák</option>
+            <option value="chemia">🧹 Čistiaca chémia</option>
+            <option value="ine">📦 Iné</option>
+          </select>
+        </div>
+      </div>
+      <label>Naposledy kúpené (dátum)</label>
+      <input type="date" id="invDate" />
+      <label>Kto kúpil</label>
+      <select id="invBuyer"></select>
+      <label>Cena (€, nepovinné)</label>
+      <input type="number" id="invPrice" placeholder="0.00" min="0" step="0.01" />
+      <label>Frekvencia doplnenia (v dňoch)</label>
+      <input type="number" id="invFreq" placeholder="30" min="1" />
+      <label>Poznámka</label>
+      <input type="text" id="invNote" placeholder="napr. Lidl, veľké balenie" />
+      <div class="modal-footer">
+        <button id="btnInvCancel">Zrušiť</button>
+        <button class="primary" id="btnInvSave">Uložiť</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // =====================================================================
+  // CONFIG & DEFAULTS
+  // =====================================================================
+  const NAMES_DEFAULT = ["Helen", "Samo", "Filip", "Tomas"];
+
+  const DEFAULT_INVENTORY = [
+    { id: "inv_jar",    name: "Jar na riad",        icon: "🧴", cat: "spotrebak", freq: 45, lastDate: null, lastBuyer: null, price: null, note: "" },
+    { id: "inv_hubky",  name: "Hubky",               icon: "🪣", cat: "spotrebak", freq: 14, lastDate: null, lastBuyer: null, price: null, note: "" },
+    { id: "inv_mydlo",  name: "Tekuté mydlo",         icon: "🫧", cat: "spotrebak", freq: 30, lastDate: null, lastBuyer: null, price: null, note: "" },
+    { id: "inv_wc",     name: "Toaletný papier",      icon: "🧻", cat: "spotrebak", freq: 14, lastDate: null, lastBuyer: null, price: null, note: "" },
+    { id: "inv_wipe",   name: "Kuchynské utierky",    icon: "🗂️", cat: "spotrebak", freq: 21, lastDate: null, lastBuyer: null, price: null, note: "" },
+    { id: "inv_wc2",    name: "WC čistič",            icon: "🚽", cat: "chemia",    freq: 30, lastDate: null, lastBuyer: null, price: null, note: "" },
+    { id: "inv_wf",     name: "Čistič podlahy / Wipes",icon: "🧹", cat: "chemia",   freq: 30, lastDate: null, lastBuyer: null, price: null, note: "" },
+    { id: "inv_bags",   name: "Smetné vrecia",        icon: "🗑️", cat: "spotrebak", freq: 21, lastDate: null, lastBuyer: null, price: null, note: "" },
+    { id: "inv_sponge", name: "Vonná tyčinka / sprej", icon: "🌸", cat: "ine",      freq: 60, lastDate: null, lastBuyer: null, price: null, note: "" },
+  ];
+
+  // =====================================================================
+  // STORE (localStorage)
+  // =====================================================================
+  const ls = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch(e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) {} },
+    del(k) { localStorage.removeItem(k); }
+  };
+
+  // =====================================================================
+  // STATE
+  // =====================================================================
+  // ── JSONBin credentials (hardcoded) ──────────────────────────────────
+  const BIN_ID  = "69a071bb43b1c97be9a0cc70";
+  const BIN_KEY = "$2a$10$1CvK8OmMv1yh9X/WN644duX.3y4mqU5Z5D9NYgAgI.Do1BYBO73ZO";
+
+  let cfg = ls.get("sync_cfg", { binId: BIN_ID, apiKey: BIN_KEY, myName: "Tomas", treasurer: "Tomas" });
+  // always keep credentials up to date even if localStorage had old values
+  cfg.binId  = BIN_ID;
+  cfg.apiKey = BIN_KEY;
+  let pokladnica = {
+    transactions: [],
+    deposits: [],
+    inventory: JSON.parse(JSON.stringify(DEFAULT_INVENTORY)),
+    names: [...NAMES_DEFAULT]
+  };
+
+  // =====================================================================
+  // JSONBin API
+  // =====================================================================
+  async function fetchFromBin() {
+    if (!cfg.binId || !cfg.apiKey) return null;
+    try {
+      const r = await fetch(`https://api.jsonbin.io/v3/b/${cfg.binId}/latest`, {
+        headers: { "X-Master-Key": cfg.apiKey }
+      });
+      if (!r.ok) throw new Error("fetch failed " + r.status);
+      const data = await r.json();
+      return data.record || null;
+    } catch(e) {
+      console.error("JSONBin fetch:", e);
+      return null;
+    }
+  }
+
+  async function saveToBin() {
+    if (!cfg.binId || !cfg.apiKey) return false;
+    try {
+      const r = await fetch(`https://api.jsonbin.io/v3/b/${cfg.binId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "X-Master-Key": cfg.apiKey },
+        body: JSON.stringify(pokladnica)
+      });
+      return r.ok;
+    } catch(e) {
+      console.error("JSONBin save:", e);
+      return false;
+    }
+  }
+
+  async function syncLoad() {
+    setSyncStatus("loading");
+    const data = await fetchFromBin();
+    if (data) {
+      // merge inventory: keep new defaults if ids not in remote
+      const remoteInvIds = (data.inventory || []).map(i => i.id);
+      const mergedInv = data.inventory || [];
+      DEFAULT_INVENTORY.forEach(di => {
+        if (!remoteInvIds.includes(di.id)) mergedInv.push(di);
+      });
+      pokladnica = { ...pokladnica, ...data, inventory: mergedInv, deposits: data.deposits || [] };
+      setSyncStatus("ok");
+    } else {
+      setSyncStatus(cfg.binId ? "error" : "none");
+    }
+    renderAll();
+  }
+
+  async function syncSave() {
+    setSyncStatus("saving");
+    const ok = await saveToBin();
+    setSyncStatus(ok ? "ok" : (cfg.binId ? "error" : "none"));
+    renderAll();
+  }
+
+  function setSyncStatus(s) {
+    const pill = document.getElementById("syncStatusPill");
+    if (!pill) return;
+    const map = {
+      none: ["⚙ Nenastavené", ""],
+      loading: ["↻ Načítavam...", "yellow"],
+      saving: ["↑ Ukladám...", "yellow"],
+      ok: ["✓ Synced", "green"],
+      error: ["✗ Chyba sync", "red"]
+    };
+    const [t, cls] = map[s] || map.none;
+    pill.textContent = t;
+    pill.className = "pill" + (cls ? " " + cls : "");
+  }
+
+  // =====================================================================
+  // RENDERING — Pokladnica
+  // =====================================================================
+  function renderAll() {
+    renderStats();
+    renderInventory();
+    renderDeposits();
+    renderHistory();
+    renderDebts();
+    updatePokladnikInfo();
+  }
+
+  function renderStats() {
+    const txs = pokladnica.transactions || [];
+    const deps = pokladnica.deposits || [];
+    const totalSpent = txs.reduce((s, t) => s + (t.amount || 0), 0);
+    const totalDeposited = deps.reduce((s, d) => s + (d.amount || 0), 0);
+    const balance = totalDeposited - totalSpent;
+    const thisMonth = txs.filter(t => {
+      const d = new Date(t.date);
+      const now = new Date();
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    }).reduce((s, t) => s + (t.amount || 0), 0);
+
+    const byPerson = {};
+    (pokladnica.names || NAMES_DEFAULT).forEach(n => byPerson[n] = 0);
+    txs.forEach(t => { if (byPerson[t.payer] !== undefined) byPerson[t.payer] += t.amount || 0; });
+    const topPayer = Object.entries(byPerson).sort((a,b) => b[1]-a[1])[0];
+    const urgentInv = (pokladnica.inventory || []).filter(i => getInvStatus(i) === "bad").length;
+    const balanceCls = balance >= 0 ? "ok" : "bad";
+
+    document.getElementById("statsGrid").innerHTML = `
+      <div class="stat-box" style="border-color:${balance >= 0 ? 'rgba(110,231,183,.3)' : 'rgba(251,113,133,.3)'}">
+        <div class="stat-label">💰 Zostatok na účte</div>
+        <div class="stat-val ${balanceCls}">€${balance.toFixed(2)}</div>
+        <div class="stat-sub">vklady €${totalDeposited.toFixed(2)} − výdavky €${totalSpent.toFixed(2)}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Celkové vklady</div>
+        <div class="stat-val" style="color:var(--accent)">€${totalDeposited.toFixed(2)}</div>
+        <div class="stat-sub">${deps.length} vkladov</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Celkové výdavky</div>
+        <div class="stat-val warn">€${totalSpent.toFixed(2)}</div>
+        <div class="stat-sub">${txs.length} platieb</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Tento mesiac výdavky</div>
+        <div class="stat-val warn">€${thisMonth.toFixed(2)}</div>
+        <div class="stat-sub">${new Date().toLocaleDateString('sk', {month:'long', year:'numeric'})}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">🚨 Chýba doplniť</div>
+        <div class="stat-val ${urgentInv > 0 ? 'bad' : 'ok'}">${urgentInv}</div>
+        <div class="stat-sub">položiek v inventári</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Pokladník</div>
+        <div class="stat-val" style="font-size:18px">${cfg.treasurer || "—"}</div>
+        <div class="stat-sub">spravuje záznamy</div>
+      </div>
+    `;
+  }
+
+  function getInvStatus(item) {
+    if (item.needsBuy) return "bad";
+    if (!item.lastDate) return "bad";
+    const days = Math.floor((Date.now() - new Date(item.lastDate)) / 86400000);
+    const freq = item.freq || 30;
+    if (days >= freq) return "bad";
+    if (days >= freq * 0.75) return "warn";
+    return "ok";
+  }
+
+  function renderInventory() {
+    const inv = pokladnica.inventory || [];
+    const grid = document.getElementById("inventoryGrid");
+    if (!inv.length) { grid.innerHTML = '<p class="small">Žiadne položky. Pridaj cez "+ Položka inventára".</p>'; return; }
+    grid.innerHTML = inv.map((item, idx) => {
+      const status = getInvStatus(item);
+      const labels = { ok: "OK", warn: "Čoskoro doplniť", bad: item.needsBuy ? "Treba dokupiť!" : (item.lastDate ? "Doplniť!" : "Nikdy nekúpené") };
+      const days = item.lastDate ? Math.floor((Date.now() - new Date(item.lastDate)) / 86400000) : null;
+      const daysText = days !== null ? `pred ${days} dňami` : "—";
+      return `
+        <div class="inv-item">
+          <div class="inv-icon">${item.icon || "📦"}</div>
+          <div class="inv-info">
+            <div class="inv-name">${item.name}</div>
+            <div class="inv-meta">
+              Naposledy: <b>${item.lastDate || "—"}</b> (${daysText}) · kúpil: <b>${item.lastBuyer || "—"}</b>
+              ${item.price ? ` · €${parseFloat(item.price).toFixed(2)}` : ""}
+              ${item.note ? ` · ${item.note}` : ""}
+            </div>
+            <div class="inv-status ${status}">${status === "ok" ? "✓" : status === "warn" ? "⚠" : "✗"} ${labels[status]}</div>
+          </div>
           <div class="inv-actions">
             ${item.needsBuy
               ? `<button onclick="markBought(${idx})" class="success" title="Označiť ako kúpené dnes">✓ Kúpené</button>`
