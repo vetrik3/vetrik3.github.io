@@ -988,6 +988,7 @@
   }
 
   function getInvStatus(item) {
+    if (item.needsBuy) return "bad";
     if (!item.lastDate) return "bad";
     const days = Math.floor((Date.now() - new Date(item.lastDate)) / 86400000);
     const freq = item.freq || 30;
@@ -1002,7 +1003,7 @@
     if (!inv.length) { grid.innerHTML = '<p class="small">Žiadne položky. Pridaj cez "+ Položka inventára".</p>'; return; }
     grid.innerHTML = inv.map((item, idx) => {
       const status = getInvStatus(item);
-      const labels = { ok: "OK", warn: "Čoskoro doplniť", bad: item.lastDate ? "Doplniť!" : "Nikdy nekúpené" };
+      const labels = { ok: "OK", warn: "Čoskoro doplniť", bad: item.needsBuy ? "Treba dokupiť!" : (item.lastDate ? "Doplniť!" : "Nikdy nekúpené") };
       const days = item.lastDate ? Math.floor((Date.now() - new Date(item.lastDate)) / 86400000) : null;
       const daysText = days !== null ? `pred ${days} dňami` : "—";
       return `
@@ -1018,7 +1019,11 @@
             <div class="inv-status ${status}">${status === "ok" ? "✓" : status === "warn" ? "⚠" : "✗"} ${labels[status]}</div>
           </div>
           <div class="inv-actions">
-            <button onclick="markBought(${idx})" class="success" title="Označiť ako kúpené dnes">✓ Kúpené</button>
+            ${item.needsBuy
+              ? `<button onclick="markBought(${idx})" class="success" title="Označiť ako kúpené dnes">✓ Kúpené</button>`
+              : `<button onclick="markNeedsBuy(${idx})" class="danger" style="font-size:12px" title="Označiť že treba dokupiť">🛒 Dokupiť</button>
+                 <button onclick="markBought(${idx})" class="success" title="Označiť ako kúpené dnes">✓ Kúpené</button>`
+            }
             <button onclick="editInvItem(${idx})" title="Upraviť">✎</button>
             <button onclick="deleteInvItem(${idx})" class="danger" title="Zmazať">✕</button>
           </div>
@@ -1122,11 +1127,17 @@
   // =====================================================================
   // ACTIONS
   // =====================================================================
+  window.markNeedsBuy = async function(idx) {
+    pokladnica.inventory[idx].needsBuy = true;
+    await syncSave();
+  };
+
   window.markBought = async function(idx) {
     const item = pokladnica.inventory[idx];
     const today = new Date().toISOString().split("T")[0];
     item.lastDate = today;
     item.lastBuyer = cfg.myName || NAMES_DEFAULT[0];
+    item.needsBuy = false;
     await syncSave();
   };
 
