@@ -1425,12 +1425,17 @@
 
   const DEFAULTS = {
     names:["Helen","Samo","Filip","Tomas"],
-    startDate:(()=>{ const d=new Date(),day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); d.setHours(0,0,0,0); return toISODateLocal(d); })()
+    startDate:"2026-03-02"  // fixed first Monday — change this to when you started
   };
 
   function renderRota(){
     const names=[n1.value.trim()||DEFAULTS.names[0],n2.value.trim()||DEFAULTS.names[1],n3.value.trim()||DEFAULTS.names[2],n4.value.trim()||DEFAULTS.names[3]];
-    const rota=currentRotation(names,startDate.value||DEFAULTS.startDate);
+    const startISO = startDate.value || DEFAULTS.startDate;
+    const w = weeksBetween(new Date(), parseISODateLocal(startISO));
+    const rota=currentRotation(names, startISO);
+    // show week info
+    const info = document.getElementById("rotaWeekInfo");
+    if (info) info.innerHTML = `<span style="color:var(--accent)">●</span> Týždeň <b>${w + 1}</b> od začiatku rotácie (posun: ${w % names.length})`;
     document.getElementById("rotaBody").innerHTML="";
     TASKS.forEach((t,idx)=>{
       const who=rota[idx%rota.length];
