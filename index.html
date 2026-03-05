@@ -607,15 +607,15 @@
     <aside class="card">
       <h2>3) Mená &amp; rotácia upratovania <span class="pill">automaticky</span></h2>
       <div class="content">
-        <p class="small">Tabuľka sa prepočíta podľa aktuálneho týždňa.</p>
+        <p class="small">Tabuľka sa prepočíta podľa aktuálneho dátumu. Zmeň dátum nižšie pre náhľad iného týždňa.</p>
         <div class="grid2" style="display:none">
           <input id="name1" type="text" placeholder="Helen" />
           <input id="name2" type="text" placeholder="Sabo" />
           <input id="name3" type="text" placeholder="Filip" />
           <input id="name4" type="text" placeholder="Tomas" />
         </div>
-        <label>Začiatok rotácie (pondelok)</label>
-        <input id="startDate" type="date" />
+        <label>Náhľad týždňa (vyber ľubovoľný dátum)</label>
+        <input id="startDate" type="date" placeholder="dnes" />
         <div style="height:10px"></div>
         <div class="badge"><span class="ok">●</span><b>Tip:</b> Každý týždeň sa posúva o 1 miesto.</div>
         <div style="height:12px"></div>
@@ -1409,6 +1409,16 @@
       checklist: [["Povrchy","Stôl, poličky, parapety."],["Podlaha","Pozametať, potom mopovať."],["Vetranie","Krátke vyvetranie (5–10 min)."]]}
   ];
 
+  // 4-týždňový cyklus: každý má raz pauzu
+  // Stĺpce: [Kuchyňa, Kúpeľňa, Spol. priestory, Pauza]
+  const ROTATION_CYCLE = [
+    ["Samo",  "Filip",  "Tomas", "Helen"],  // týždeň 0 (2.3.2026)
+    ["Filip",  "Tomas", "Helen", "Samo" ],  // týždeň 1
+    ["Tomas", "Helen",  "Samo",  "Filip" ], // týždeň 2
+    ["Helen", "Samo",   "Filip", "Tomas" ], // týždeň 3
+  ];
+  const ROTATION_START = "2026-03-02"; // pevný začiatok — nemení sa
+
   const lsStore = {
     get(k,d){ try{ const v=localStorage.getItem(k); return v===null?d:JSON.parse(v); }catch(e){return d;} },
     set(k,v){ localStorage.setItem(k,JSON.stringify(v)); }
@@ -1421,28 +1431,48 @@
   function parseISODateLocal(iso){ const [y,m,d]=iso.split("-").map(Number); return new Date(y,m-1,d,0,0,0,0); }
   function mondayOf(date){ const d=new Date(date),day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); d.setHours(0,0,0,0); return d; }
   function weeksBetween(a,b){ return Math.floor((mondayOf(a)-mondayOf(b))/(7*24*60*60*1000)); }
-  function currentRotation(names,startISO){ const w=weeksBetween(new Date(),parseISODateLocal(startISO)),n=names.length,shift=((w%n)+n)%n; return names.slice(shift).concat(names.slice(0,shift)); }
 
-  const DEFAULTS = {
-    names:["Helen","Samo","Filip","Tomas"],
-    startDate:"2026-03-02"  // fixed first Monday — change this to when you started
-  };
+  function getWeekAssignments(forDateISO) {
+    // forDateISO = ISO date string to preview (defaults to today)
+    const forDate = forDateISO ? parseISODateLocal(forDateISO) : new Date();
+    const w = weeksBetween(forDate, parseISODateLocal(ROTATION_START));
+    const cycleIdx = ((w % 4) + 4) % 4;
+    const row = ROTATION_CYCLE[cycleIdx];
+    return { cycleIdx, w, row };
+  }
 
   function renderRota(){
-    const names=[n1.value.trim()||DEFAULTS.names[0],n2.value.trim()||DEFAULTS.names[1],n3.value.trim()||DEFAULTS.names[2],n4.value.trim()||DEFAULTS.names[3]];
-    const startISO = startDate.value || DEFAULTS.startDate;
-    const w = weeksBetween(new Date(), parseISODateLocal(startISO));
-    const rota=currentRotation(names, startISO);
-    // show week info
+    // Use the preview date input if set, otherwise today
+    const previewISO = startDate.value || null;
+    const forDate = previewISO ? parseISODateLocal(previewISO) : new Date();
+    const { cycleIdx, w, row } = getWeekAssignments(previewISO);
+
+    const mon = mondayOf(forDate);
+    const sun = new Date(mon); sun.setDate(sun.getDate() + 6);
+    const fmt = d => d.toLocaleDateString("sk", {day:"numeric", month:"numeric"});
+    const weekLabel = `${fmt(mon)} – ${fmt(sun)}`;
+
     const info = document.getElementById("rotaWeekInfo");
-    if (info) info.innerHTML = `<span style="color:var(--accent)">●</span> Týždeň <b>${w + 1}</b> od začiatku rotácie (posun: ${w % names.length})`;
-    document.getElementById("rotaBody").innerHTML="";
-    TASKS.forEach((t,idx)=>{
-      const who=rota[idx%rota.length];
-      const tr=document.createElement("tr");
-      tr.innerHTML=`<td><b>${t.area}</b><div class="small">${t.details}</div></td><td><b>${who}</b></td>`;
-      document.getElementById("rotaBody").appendChild(tr);
+    if (info) info.innerHTML = `<span style="color:var(--accent)">●</span> Týždeň <b>${w + 1}</b> · cyklus <b>${cycleIdx + 1}/4</b> · <span style="color:var(--muted)">${weekLabel}</span>`;
+
+    const tbody = document.getElementById("rotaBody");
+    tbody.innerHTML = "";
+
+    // 3 úlohy + pauza
+    const assignments = [
+      { task: TASKS[0], who: row[0] },
+      { task: TASKS[1], who: row[1] },
+      { task: TASKS[2], who: row[2] },
+    ];
+    assignments.forEach(({ task, who }) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td><b>${task.area}</b><div class="small">${task.details}</div></td><td><b>${who}</b></td>`;
+      tbody.appendChild(tr);
     });
+    // pauza row
+    const pauseTr = document.createElement("tr");
+    pauseTr.innerHTML = `<td><i style="color:var(--muted)">— Pauza (žiadna úloha)</i></td><td><b style="color:var(--muted)">${row[3]}</b></td>`;
+    tbody.appendChild(pauseTr);
   }
 
   function renderChecklists(){
@@ -1469,17 +1499,17 @@
   }
 
   function loadSettings(){
-    const names=lsStore.get("names",DEFAULTS.names);
-    n1.value=names[0]||DEFAULTS.names[0]; n2.value=names[1]||DEFAULTS.names[1];
-    n3.value=names[2]||DEFAULTS.names[2]; n4.value=names[3]||DEFAULTS.names[3];
-    startDate.value=lsStore.get("startDate",DEFAULTS.startDate);
+    const names=lsStore.get("names", NAMES_DEFAULT);
+    n1.value=names[0]||NAMES_DEFAULT[0]; n2.value=names[1]||NAMES_DEFAULT[1];
+    n3.value=names[2]||NAMES_DEFAULT[2]; n4.value=names[3]||NAMES_DEFAULT[3];
+    const _t = new Date(); startDate.value = `${_t.getFullYear()}-${String(_t.getMonth()+1).padStart(2,"0")}-${String(_t.getDate()).padStart(2,"0")}`;
   }
 
   [n1,n2,n3,n4].forEach(el=>el.addEventListener("input",()=>{
     lsStore.set("names",[n1.value,n2.value,n3.value,n4.value]);
     renderRota();
   }));
-  startDate.addEventListener("change",()=>{ lsStore.set("startDate",startDate.value); renderRota(); });
+  startDate.addEventListener("change", renderRota); // preview only, not saved
 
   document.getElementById("btnPrint").onclick=()=>window.print();
   document.getElementById("btnReset").onclick=()=>{
